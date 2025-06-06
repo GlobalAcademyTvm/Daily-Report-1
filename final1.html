@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Daily Report System</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .hidden { display: none; }
+    .note-box { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+    #logout { float: right; }
+    textarea { width: 100%; }
+    input, select, button, textarea { margin-top: 5px; }
+    .section { margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<h2>Daily Report System</h2>
+
+<div id="login">
+  <h3>Login</h3>
+  <input type="text" id="loginUser" placeholder="User ID"><br>
+  <input type="password" id="loginPass" placeholder="Password"><br><br>
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="dashboard" class="hidden">
+  <button id="logout" onclick="logout()">Logout</button>
+  <h3>Welcome, <span id="userName"></span></h3>
+
+  <div id="adminPanel" class="hidden section">
+    <h4>Create Staff</h4>
+    <input type="text" id="newStaffName" placeholder="Staff Name"><br>
+    <input type="text" id="newStaffPass" placeholder="Password"><br>
+    <button onclick="createStaff()">Create Staff</button>
+
+    <h4>Send Message to Staff</h4>
+    <select id="staffSelect"></select><br>
+    <input type="text" id="adminMsg" placeholder="Message"><br>
+    <button onclick="sendMessage()">Send</button><br><br>
+
+    <button onclick="sendPDF()">Send All Reports as PDF</button>
+  </div>
+
+  <div id="noteSection" class="section">
+    <h4>Write Daily Note</h4>
+    <textarea id="dailyNote" rows="4" placeholder="Enter your daily note here..."></textarea><br>
+    <button onclick="submitNote()">Submit Note</button>
+    <p><b>Current Time:</b> <span id="noteTime"></span></p>
+  </div>
+
+  <div class="section">
+    <h4>Search Reports by Date</h4>
+    <input type="date" id="searchDate"><button onclick="searchReports()">Search</button>
+    <div id="searchResults"></div>
+  </div>
+
+  <div class="section hidden" id="adminMessages">
+    <h4>Messages from Admin</h4>
+    <div id="msgList"></div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+
+function updateTime() {
+  const now = new Date();
+  const formatted = now.toLocaleString('en-GB', { hour12: true });
+  document.getElementById('noteTime').innerText = formatted;
+}
+setInterval(updateTime, 1000);
+
+function login() {
+  const user = document.getElementById('loginUser').value;
+  const pass = document.getElementById('loginPass').value;
+  const staff = JSON.parse(localStorage.getItem('staff') || '{}');
+
+  if (user === 'Admin' && pass === 'Global@123') {
+    currentUser = 'Admin';
+    showDashboard();
+  } else if (staff[user] && staff[user] === pass) {
+    currentUser = user;
+    showDashboard();
+  } else {
+    alert('Invalid login');
+  }
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
+}
+
+function showDashboard() {
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('userName').innerText = currentUser;
+  document.getElementById('adminPanel').classList.toggle('hidden', currentUser !== 'Admin');
+  document.getElementById('adminMessages').classList.toggle('hidden', currentUser === 'Admin');
+  updateStaffDropdown();
+  loadMessages();
+}
+
+function createStaff() {
+  const name = document.getElementById('newStaffName').value.trim();
+  const pass = document.getElementById('newStaffPass').value.trim();
+  if (!name || !pass) return alert("Both fields are required.");
+  let staff = JSON.parse(localStorage.getItem('staff') || '{}');
+  if (staff[name]) return alert("Staff already exists.");
+  staff[name] = pass;
+  localStorage.setItem('staff', JSON.stringify(staff));
+  alert("Staff created.");
+  updateStaffDropdown();
+}
+
+function updateStaffDropdown() {
+  const staff = JSON.parse(localStorage.getItem('staff') || '{}');
+  const select = document.getElementById('staffSelect');
+  select.innerHTML = '';
+  for (let name in staff) {
+    let opt = document.createElement('option');
+    opt.value = name;
+    opt.text = name;
+    select.appendChild(opt);
+  }
+}
+
+function submitNote() {
+  const note = document.getElementById('dailyNote').value.trim();
+  if (!note) return alert("Note is empty.");
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-GB', { hour12: true });
+  const dateKey = now.toISOString().split('T')[0];
+
+  let notes = JSON.parse(localStorage.getItem('notes') || '{}');
+  if (!notes[dateKey]) notes[dateKey] = [];
+  notes[dateKey].push({ user: currentUser, note, time: timestamp });
+  localStorage.setItem('notes', JSON.stringify(notes));
+
+  document.getElementById('dailyNote').value = '';
+  alert("Note submitted.");
+}
+
+function searchReports() {
+  const date = document.getElementById('searchDate').value;
+  if (!date) return alert("Select a date.");
+  const notes = JSON.parse(localStorage.getItem('notes') || '{}');
+  const msgs = JSON.parse(localStorage.getItem('messages') || '{}');
+  const results = document.getElementById('searchResults');
+  results.innerHTML = '';
+
+  if (notes[date]) {
+    notes[date].forEach(entry => {
+      if (currentUser === 'Admin' || currentUser === entry.user) {
+        let div = document.createElement('div');
+        div.className = 'note-box';
+        div.innerHTML = `<b>${entry.user}</b>: ${entry.note} <br><small>${entry.time}</small>`;
+        results.appendChild(div);
+      }
+    });
+  } else {
+    results.innerHTML = "No notes found.";
+  }
+
+  if (msgs[currentUser] && msgs[currentUser][date]) {
+    let msgDiv = document.createElement('div');
+    msgDiv.className = 'note-box';
+    msgDiv.style.background = '#f9f9f9';
+    msgDiv.innerHTML = `<b>Admin Message:</b> ${msgs[currentUser][date]}`;
+    results.appendChild(msgDiv);
+  }
+}
+
+function sendMessage() {
+  const staff = document.getElementById('staffSelect').value;
+  const msg = document.getElementById('adminMsg').value.trim();
+  const date = new Date().toISOString().split('T')[0];
+  if (!msg) return alert("Message is empty.");
+
+  let messages = JSON.parse(localStorage.getItem('messages') || '{}');
+  if (!messages[staff]) messages[staff] = {};
+  messages[staff][date] = msg;
+  localStorage.setItem('messages', JSON.stringify(messages));
+  document.getElementById('adminMsg').value = '';
+  alert("Message sent.");
+}
+
+function loadMessages() {
+  const messages = JSON.parse(localStorage.getItem('messages') || '{}');
+  const list = document.getElementById('msgList');
+  list.innerHTML = '';
+  if (!messages[currentUser]) return;
+  for (let date in messages[currentUser]) {
+    let div = document.createElement('div');
+    div.innerHTML = `<b>${date}:</b> ${messages[currentUser][date]}`;
+    list.appendChild(div);
+  }
+}
+
+function sendPDF() {
+  alert("This would generate and email a PDF report to globalcombines@gmail.com. (Simulated)");
+}
+</script>
+
+</body>
+</html>
